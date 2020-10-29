@@ -34,7 +34,6 @@ public class Blockchain {
         BlockChainTaskToDo bcTtd = new BlockChainTaskToDo(processID);
     }
 }
-
 class BlockRecord {
     private String block_ID;
     private String signedBlock_ID;
@@ -226,20 +225,20 @@ class BlockChainTaskToDo {
     public static int pkCount = 0;
     public static String blockchain = "[First block]";
     public static KeyPair keysPair;
-    public static boolean processStartFlag = false;
 
     public static PublicKey[] publicKeyList = new PublicKey[totalNumProcesses];
     // Blockchain Ledger - contains verified blocks in it.
     public static LinkedList<BlockRecord> bcLedger = new LinkedList<>();
     public static final PriorityBlockingQueue<BlockRecord> blockQueue = new PriorityBlockingQueue<>(100, new BRComparator());
+    static LinkedList<BlockRecord> brList = new LinkedList<>();
 
-    private static final int iFname = 0;
-    private static final int iLname = 1;
+    private static final int iFName = 0;
+    private static final int iLName = 1;
     private static final int iDob = 2;
     private static final int iSsnNum = 3;
-    private static final int iDIAG = 4;
-    private static final int iTREAT = 5;
-    private static final int iRX = 6;
+    private static final int iMedDiag = 4;
+    private static final int iMedTreatment = 5;
+    private static final int iMedRx = 6;
 
     public BlockChainTaskToDo(int processID) {
         this.processID = processID;
@@ -255,21 +254,88 @@ class BlockChainTaskToDo {
         new Thread(new PublicKeysServer()).start();
         new Thread(new UVBlockServer(blockQueue)).start();
         new Thread(new UBlockchainServer()).start();
-        callSleep();
+        try {
+            Thread.sleep(2000);
+        }
+        catch (Exception exception) {
+            exception.printStackTrace();
+        }
 
         if(processID == 2) {
             startAllProcesses();
         }
 
         try{
-            keysPair = generateKeyPair(999);
-        } catch (Exception e){}
+            keysPair = generateKeyPair(444);
+        }
+        catch (Exception exception){
+            exception.printStackTrace();
+        }
 
-        while (!processStartFlag) {
+        while (!beginProcessFlag) {
             callSleep();
         }
         System.out.println("Launching...");
         multiCastPublicKeys();
+        while(!pkFlag) {
+            callSleep();
+        }
+
+        if(processID == 0) {
+            createGenesisBlock();
+        }
+
+        readInputFile();
+        multiCast2Processes();
+        try {
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        new Thread(new WorkPuzzle(blockQueue)).start();
+    }
+
+    public void multiCast2Processes() {
+        Socket mcpSocket;
+        PrintStream send2Server;
+        BlockRecord tempBlockRec;
+        Iterator<BlockRecord> iterator = bcLedger.iterator();
+        try {
+
+            while (iterator.hasNext()){
+                tempBlockRec = iterator.next();
+                String blockRec = jsonBuilder(tempBlockRec);
+                for(int i = 0; i < totalNumProcesses; i++){
+                    mcpSocket = new Socket(sName, Ports.portBaseUBServer + i);
+                    send2Server = new PrintStream(mcpSocket.getOutputStream());
+                    send2Server.println(blockRec);
+                    send2Server.flush();
+                    mcpSocket.close();
+                }
+            }
+        }
+        catch (Exception excpt){
+            excpt.printStackTrace();
+        }
+    }
+
+    public static void callSleep() {
+        try {
+            Thread.sleep(1000);
+        }
+        catch (Exception exception) {
+            exception.printStackTrace();
+        }
+    }
+
+    public static boolean isDuplicate(BlockRecord blockRecordIn) {
+        BlockRecord checkRec = blockRecordIn;
+        Iterator<BlockRecord> looper = bcLedger.iterator();
+        while(looper.hasNext()){
+            if (checkRec.getBlock_ID().equals(looper.next().getBlock_ID()))
+                return true;
+        }
+        return false;
     }
 
     public static KeyPair generateKeyPair(long randomSeed) throws Exception {
@@ -277,7 +343,6 @@ class BlockChainTaskToDo {
         SecureRandom rng = SecureRandom.getInstance("SHA1PRNG", "SUN");
         rng.setSeed(randomSeed);
         keyGenerator.initialize(1024, rng);
-
         return (keyGenerator.generateKeyPair());
     }
 
@@ -301,24 +366,26 @@ class BlockChainTaskToDo {
         }
     }
 
-    public void callSleep() {
+    public boolean startAllProcesses() {
+        Socket startSocket;
+        PrintStream send2Server;
         try {
-            Thread.sleep(2000);
-        }
-        catch (Exception exception) {
+            for(int i = 0; i < totalNumProcesses; i++) {
+                startSocket = new Socket(sName, Ports.portBaseStartServer + i);
+                send2Server = new PrintStream(startSocket.getOutputStream());
+                send2Server.println("start");
+                System.out.println("Sending Start");
+                send2Server.flush();
+                startSocket.close();
+            }
+        } catch (Exception exception) {
             exception.printStackTrace();
         }
-    }
-
-    public void startAllProcesses() {
-
+        return true;
     }
 
     public static void createGenesisBlock(){
- 		/*
- 		This is the dummyBlock that will serve as the starting point for each process.
- 		The data is set so that each block receives the same data.
- 		*/
+
         String SHA256Data = "";
         BlockRecord  blockRec = new BlockRecord();
 
@@ -326,8 +393,7 @@ class BlockChainTaskToDo {
         long timeValue = dateValue.getTime();
         String strTimeValue = String.valueOf(timeValue);
         String timeStamped = strTimeValue + "." + processID;
-        String setUUID = new String(UUID.randomUUID().toString());
-
+        String setUUID = UUID.randomUUID().toString();
 
         blockRec.setTimeStamp(timeStamped);
         blockRec.setBlock_ID(setUUID);
@@ -341,8 +407,6 @@ class BlockChainTaskToDo {
         blockRec.setPreviousHashValue("1111111111");
         blockRec.setBlockNumber("1");
 
-        //creates string of all block elements to be used to create SHA256 Hash.
-
         String blockRecord = blockRec.getBlock_ID() +
                 blockRec.getFirstName() +
                 blockRec.getLastName() +
@@ -352,36 +416,89 @@ class BlockChainTaskToDo {
                 blockRec.getTreatmentRec() +
                 blockRec.getMedicineRec();
 
+        //System.out.println("Dummy Block Record: " + blockRecord);
+
         MessageDigest msgDigest;
         String encodedBlock = null;
 
         try{
             msgDigest = MessageDigest.getInstance("SHA-256");
+            //System.out.println("Msg Digest:" + msgDigest);
+            // update() method is invoked to modify the digest using specified # of bytes
             msgDigest.update(blockRecord.getBytes());
+            // digest() method is invoked to finish the hash computations - adding padding if needed!
             byte[] hashData = msgDigest.digest();
-            System.out.println("hashData:" + hashData);
+            //System.out.println("hashData:" + hashData);
 
+            // Converting byte to hex format data
             StringBuffer strBuff = new StringBuffer();
-            for(int i = 0; i < hashData.length; i++) {
-                strBuff.append(Integer.toString((hashData[i] & 0xff) + 0x100, 16).substring(1));
+            for (byte hashDatum : hashData) {
+                strBuff.append(Integer.toString((hashDatum & 0xff) + 0x100, 16).substring(1));
             }
 
+            // For ease of looking at it, we'll save it as a string.
             SHA256Data = strBuff.toString();
+            //System.out.println("SHA256Data: " + SHA256Data);
+            // Here we just assume the first hash is a winner. No real *work*.
             blockRec.setWinningHashValue(SHA256Data);
         }
         catch(NoSuchAlgorithmException nsae) {
             nsae.printStackTrace();
-        };
+        }
 
         bcLedger.add(0, blockRec);
         System.out.println("Size of the BlockChain Ledger is: " + bcLedger.size());
 
-        // Writing dummy block record to the blockchain ledger
-//        if(processID == 0){
-//            System.out.println("Writing Block One");
-//            sendBlock(blockRec, "sendUpdate");
-//            writeJSON();
-//        }
+        if(processID == 0){
+            System.out.println("Writing first block to BC ledger");
+            sendBlock2Ledger(blockRec, "bcLedgerUpdate");
+            writeToJSON();
+        }
+    }
+
+    public static void sendBlock2Ledger(BlockRecord blockRec, String operation) {
+        Socket sblSocket;
+        PrintStream send2Server;
+        switch (operation) {
+            case "bcLedgerUpdate" :
+                try {
+                    for (int i = 0; i <totalNumProcesses; i++) {
+                        sblSocket = new Socket(sName, Ports.portBaseUpdatedBC + i);
+                        send2Server = new PrintStream(sblSocket.getOutputStream());
+
+                        send2Server.println(jsonBuilder(blockRec)); //uses my buildString function to marshall record as JSON
+                        System.out.println("Verified block broadcasting " + blockRec.getBlock_ID());
+                        send2Server.flush();
+                        sblSocket.close();
+                    }
+                } catch (IOException ioException) {
+                    ioException.printStackTrace();
+                }
+                break;
+            case "reVerifyBlock" :
+                try {
+                    System.out.println("Inside Switch reverify block!");
+                    for (int j = 0; j < totalNumProcesses; j++) {
+                        sblSocket = new Socket(sName, Ports.portBaseUpdatedBC + j);
+                        send2Server = new PrintStream(sblSocket.getOutputStream());
+                        send2Server.println(jsonBuilder(blockRec));
+                        System.out.println("Block is being broadcasted: " + blockRec.getBlock_ID());
+                        send2Server.flush();
+                        sblSocket.close();
+                    }
+                } catch (IOException ioException) {
+                    ioException.printStackTrace();
+                }
+                break;
+
+        }
+
+    }
+
+    public static String jsonBuilder(BlockRecord blockRec) {
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        String json = gson.toJson(blockRec);
+        return json;
     }
 
     public static void readInputFile() {
@@ -399,7 +516,7 @@ class BlockChainTaskToDo {
                     long timeValue = dateValue.getTime();
                     String timeStamp = String.valueOf(timeValue);
                     String timeStampPID = timeStamp + "." + processID ;
-                    blockUUID = new String(UUID.randomUUID().toString());
+                    blockUUID = UUID.randomUUID().toString();
                     tokensNum = inputStrData.split(" +");
                     String blockIDSigned = "";
                     try{
@@ -408,7 +525,54 @@ class BlockChainTaskToDo {
 
                     }catch(Exception excpt){
                         excpt.printStackTrace();
+                    }
+
+                    blockRec.setTimeStamp(timeStampPID);
+                    blockRec.setBlock_ID(blockUUID);
+                    blockRec.setSignedBlock_ID(blockIDSigned);
+                    blockRec.setFirstName(tokensNum[iFName]);
+                    blockRec.setLastName(tokensNum[iLName]);
+                    blockRec.setSsnNumber(tokensNum[iSsnNum]);
+                    blockRec.setDateOfBirth(tokensNum[iDob]);
+                    blockRec.setMedicalCondition(tokensNum[iMedDiag]);
+                    blockRec.setTreatmentRec(tokensNum[iMedTreatment]);
+                    blockRec.setMedicineRec(tokensNum[iMedRx]);
+                    blockRec.setProcessCreation(String.valueOf(processID));
+
+                    brList.add(blockRec);
+
+                    String blockRecStr = blockRec.getBlock_ID() + blockRec.getFirstName() + blockRec.getLastName() +
+                            blockRec.getSsnNumber() + blockRec.getDateOfBirth() + blockRec.getMedicalCondition() +
+                            blockRec.getTreatmentRec() + blockRec.getMedicineRec() + blockRec.getProcessCreation();
+                    System.out.println("BlockRecord String:" + blockRecStr);
+
+                    String hashDigestStr = "";
+                    String hashSigned = "";
+                    try{
+                        MessageDigest msgDigest = MessageDigest.getInstance("SHA-256");
+                        msgDigest.update (blockRecStr.getBytes());
+                        byte byteData[] = msgDigest.digest();
+
+                        // CDE: Convert the byte[] to hex format. THIS IS NOT VERFIED CODE:
+                        StringBuffer strBuff = new StringBuffer();
+                        for (int i = 0; i < byteData.length; i++) {
+                            strBuff.append(Integer.toString((byteData[i] & 0xff) + 0x100, 16).substring(1));
+                        }
+                        hashDigestStr = strBuff.toString(); // For ease of looking at it, we'll save it as a string.
+                    }
+                    catch(NoSuchAlgorithmException exception){
+                        exception.printStackTrace();
                     };
+                    try {
+                        byte[] digitalSign = signData(hashDigestStr.getBytes(), keysPair.getPrivate());
+                        hashSigned = Base64.getEncoder().encodeToString(digitalSign);
+                    }
+                    catch (Exception excpt) {
+                        excpt.printStackTrace();
+                    }
+                    blockRec.setHashMaker(hashDigestStr);
+                    blockRec.setHashSignedMaker(hashSigned);
+                    callSleep();
                 }
             } catch (IOException ioException) {
                 ioException.printStackTrace();
@@ -421,12 +585,20 @@ class BlockChainTaskToDo {
     }
 
     // Review once!!
-    private static byte[] signData(byte[] bytesData, PrivateKey aPrivateKey) throws SignatureException,
-            InvalidKeyException, NoSuchAlgorithmException {
+    public static byte[] signData(byte[] bytesData, PrivateKey aPrivateKey)
+            throws SignatureException, InvalidKeyException, NoSuchAlgorithmException {
         Signature signer = Signature.getInstance("SHA1withRSA");
         signer.initSign(aPrivateKey);
         signer.update(bytesData);
         return (signer.sign());
+    }
+
+    public static boolean verifySignature(byte[] bytesData, PublicKey publicKey, byte[] decode)
+            throws NoSuchAlgorithmException, InvalidKeyException, SignatureException {
+        Signature signer = Signature.getInstance("SHA1withRSA");
+        signer.initVerify(publicKey);
+        signer.update(bytesData);
+        return (signer.verify(decode));
     }
 
     public static void writeToJSON() {
@@ -482,6 +654,7 @@ class BRComparator implements Comparator<BlockRecord> {
 }
 class StartMainServer implements Runnable {
     public void run() {
+        //System.out.println("Inside start main server!!!");
         int queueLength = 6;
         Socket socket;
         System.out.println("Main server started at: " + Integer.toString(Ports.portStartServer));
@@ -503,6 +676,7 @@ class SMSWorker extends Thread {
     }
     public void run() {
         try {
+            //System.out.println("Inside start main server worker class!!!");
             BufferedReader inputData = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             String dataRead = inputData.readLine();
             BlockChainTaskToDo.beginProcessFlag = true;
@@ -643,33 +817,162 @@ class UpdatedBlockchainWorker extends Thread {
         try {
             BufferedReader inputData = new BufferedReader(new InputStreamReader(bcSocket.getInputStream()));
             String brData = "";
-            StringBuffer brDataInput = new StringBuffer();
+            StringBuffer brDataBuff = new StringBuffer();
             Gson gson = new Gson();
             while ((brData = inputData.readLine()) != null) {
-                brDataInput.append(brData);
+                brDataBuff.append(brData);
             }
 
-            BlockRecord blockRecordIn = gson.fromJson(brDataInput.toString(), BlockRecord.class);
-//            if (!Blockchain.checkDupes(blockRecordIn))//verifies that block isn't already in ledger
-//            {
-//                Blockchain.verifiedBlocks.add(0, blockRecordIn);//adds block to this processes ledger.
-//                System.out.println("Block added. Verified Count is: "+ Blockchain.verifiedBlocks.size());
-//
-//            }
+            BlockRecord blockRecordIn = gson.fromJson(brDataBuff.toString(), BlockRecord.class);
+            if (!BlockChainTaskToDo.isDuplicate(blockRecordIn))
+            {
+                BlockChainTaskToDo.bcLedger.add(0, blockRecordIn);
+                System.out.println("Block has been added to Ledger");
+                System.out.println("Verified Block Count: " + BlockChainTaskToDo.bcLedger.size());
+
+            }
             if (BlockChainTaskToDo.processID == 0){
                 BlockChainTaskToDo.writeToJSON();
             }
 
-//            String brDataInput;
-//            while((brDataInput = inputData.readLine()) != null){
-//                brData = brData + "\n" + brDataInput;
-//            }
-            BlockChainTaskToDo.blockchain = brData;
-            System.out.println("         --NEW BLOCKCHAIN--\n" + BlockChainTaskToDo.blockchain + "\n\n");
+//            BlockChainTaskToDo.blockchain = brData;
+//            System.out.println("         --NEW BLOCKCHAIN--\n" + BlockChainTaskToDo.blockchain + "\n\n");
             bcSocket.close();
         }
         catch (IOException ioException) {
             ioException.printStackTrace();
         }
+    }
+}
+class WorkPuzzle implements Runnable {
+
+    BlockingQueue<BlockRecord> blockQ;
+    private static final String alphaNumericStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+    public WorkPuzzle(PriorityBlockingQueue<BlockRecord> blockQueue) {
+        this.blockQ = blockQueue;
+    }
+
+    @Override
+    public void run() {
+        try {
+            while(true) {
+                BlockRecord blockRec = BlockChainTaskToDo.blockQueue.take();
+                String blockRecStr = blockRec.getBlock_ID() + blockRec.getFirstName() +
+                        blockRec.getLastName() + blockRec.getSsnNumber() +
+                        blockRec.getDateOfBirth() + blockRec.getMedicalCondition() +
+                        blockRec.getTreatmentRec() + blockRec.getMedicineRec() +
+                        blockRec.getProcessCreation();
+                String concatenateStr = "";
+                String hashStr = "";
+                boolean isHashVerified;
+                boolean isBlockIDVerified;
+                if (BlockChainTaskToDo.isDuplicate(blockRec) && blockRec!=null) {
+                    System.out.println("Duplicated Block Record in BlockChain");
+                    continue;
+                }
+
+                isHashVerified = BlockChainTaskToDo.verifySignature(blockRec.getHashMaker().getBytes(),
+                        BlockChainTaskToDo.publicKeyList[Integer.valueOf(blockRec.getProcessCreation())],
+                        Base64.getDecoder().decode(blockRec.getHashSignedMaker()));
+
+                isBlockIDVerified = BlockChainTaskToDo.verifySignature(blockRec.getBlock_ID().getBytes(),
+                        BlockChainTaskToDo.publicKeyList[Integer.valueOf(blockRec.getProcessCreation())],
+                        Base64.getDecoder().decode(blockRec.getSignedBlock_ID()));
+
+                String messageHash = isHashVerified ? "Hash Signed" : "Hash not Signed";
+                System.out.println(messageHash);
+
+                String messageBlock = isBlockIDVerified ? "Block ID Signed" : "Block ID not Signed";
+                System.out.println(messageBlock);
+
+                String randomStr = randomAlphaNumeric(8);
+                String previousBlockID = BlockChainTaskToDo.bcLedger.get(0).getBlock_ID();
+
+                int workID = 0;
+                String updatedBlock = blockRecStr;
+                updatedBlock = updatedBlock + BlockChainTaskToDo.bcLedger.get(0).getWinningHashValue();
+                if(!BlockChainTaskToDo.isDuplicate(blockRec) && blockRec!= null) {
+                    try {
+                        for(int i = 1; i < 10; i++) {
+                            randomStr = randomAlphaNumeric(8);
+                            concatenateStr = updatedBlock + randomStr;
+                            MessageDigest msgDigest = MessageDigest.getInstance("SHA-256");
+                            byte[] bytesHash = msgDigest.digest(concatenateStr.getBytes("UTF-8"));
+
+                            hashStr = byteArray2Str(bytesHash);
+                            workID = Integer.parseInt(hashStr.substring(0,4),16);
+
+                            if (!(workID < 20000)) {
+                                System.out.format("Puzzle not solved! Working again! \n");
+                            }
+
+                            if(workID < 20000) {
+                                if (previousBlockID != BlockChainTaskToDo.bcLedger.get(0).getBlock_ID()) {
+                                    System.out.println("Reading record from Work Loop");
+                                    BlockChainTaskToDo.sendBlock2Ledger(blockRec, "reVerifyBlock");
+
+                                }
+                                else {
+                                    blockRec.setWinningHashValue(hashStr);
+                                    blockRec.setRandomSeedValue(randomStr);
+                                    System.out.println("Winning Random String being added "+ randomStr);
+                                    blockRec.setPreviousHashValue(BlockChainTaskToDo.bcLedger.get(0).getWinningHashValue());
+
+                                    int prevBlockNumber = Integer.valueOf(BlockChainTaskToDo.bcLedger.get(0).getBlockNumber());
+                                    prevBlockNumber++;
+                                    blockRec.setBlockNumber(String.valueOf(prevBlockNumber));
+                                    blockRec.setProcessIDVerification(String.valueOf(BlockChainTaskToDo.processID));
+
+                                    String signHashVerifier = "";
+
+                                    byte[] digitalSign = BlockChainTaskToDo.signData(hashStr.getBytes(),
+                                            BlockChainTaskToDo.keysPair.getPrivate());
+                                    signHashVerifier=Base64.getEncoder().encodeToString(digitalSign);
+
+
+                                    blockRec.setWinningSignedHashValue(signHashVerifier);
+
+                                    BlockChainTaskToDo.bcLedger.add(0,blockRec);
+                                    System.out.println("BlockRecord added to Blochain Ledger.");
+                                    System.out.println("Verified Blocks count is: " + BlockChainTaskToDo.bcLedger.size());
+                                    BlockChainTaskToDo.sendBlock2Ledger(blockRec, "bcLedgerUpdate");
+                                    continue;
+                                }
+                                break;
+                            }
+                            if (BlockChainTaskToDo.isDuplicate(blockRec)){
+                                System.out.println("Duplicate block working!");
+                                break;
+                            }
+                            BlockChainTaskToDo.callSleep();
+                        }
+                    }
+                    catch (Exception excpt) {
+                        excpt.printStackTrace();
+                    }
+                    System.out.println("Loop functioning Stopped!");
+                }
+
+            }
+        } catch (Exception excpt) {
+            excpt.printStackTrace();
+        }
+    }
+
+    public static String randomAlphaNumeric(int count) {
+        StringBuilder stringBuilder = new StringBuilder();
+        while (count-- != 0) {
+            int character = (int)(Math.random() * alphaNumericStr.length());
+            stringBuilder.append(alphaNumericStr.charAt(character));
+        }
+        return stringBuilder.toString();
+    }
+    public static String byteArray2Str(byte[] ba2s) {
+        StringBuilder hex = new StringBuilder(ba2s.length * 2);
+        for(int i=0; i < ba2s.length; i++){
+            hex.append(String.format("%02X", ba2s[i]));
+        }
+        return hex.toString();
     }
 }
