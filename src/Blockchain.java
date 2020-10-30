@@ -287,6 +287,7 @@ class BlockChainTaskToDo {
 
         readInputFile();
         multiCast2Processes();
+
         try {
             Thread.sleep(2000);
         } catch (InterruptedException e) {
@@ -299,12 +300,13 @@ class BlockChainTaskToDo {
         Socket mcpSocket;
         PrintStream send2Server;
         BlockRecord tempBlockRec;
-        Iterator<BlockRecord> iterator = bcLedger.iterator();
+        Iterator<BlockRecord> iterator = brList.iterator();
         try {
-
             while (iterator.hasNext()){
                 tempBlockRec = iterator.next();
                 String blockRec = jsonBuilder(tempBlockRec);
+                System.out.println("Inside MultiCast Processes:");
+                System.out.println("Block Rec:" + blockRec);
                 for(int i = 0; i < totalNumProcesses; i++){
                     mcpSocket = new Socket(sName, Ports.portBaseUBServer + i);
                     send2Server = new PrintStream(mcpSocket.getOutputStream());
