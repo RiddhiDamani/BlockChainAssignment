@@ -531,16 +531,18 @@ class BlockChainTaskToDo {
         // UVB before they start competing
         try {
             Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+        } catch (InterruptedException exception) {
+            // exception handling
+            exception.printStackTrace();
         }
 
-        // created new thread for processes to solve the work puzzle
-        new Thread(new WorkPuzzle(blockQueue)).start();
-
+        // created new thread for processes (P0, P1, P2) to solve the work puzzle
+        new Thread( new WorkPuzzle(blockQueue)).start();
+        // Invoking sleep statement
         try {
             Thread.sleep(21000);
         } catch (Exception exception) {
+            //exception handling
             exception.printStackTrace();
         }
 
@@ -549,7 +551,7 @@ class BlockChainTaskToDo {
         System.out.println("-------------------------------------------------------");
         System.out.println("For further processing, please enter commands as below:");
         System.out.println("1. Enter 'C' for Credits");
-        System.out.println("2. Enter 'V' for Verifying entire BlockChain again");
+        System.out.println("2. Enter 'V' for Verification of Entire BlockChain again");
         System.out.println("3. Enter 'L' for List records in single line");
         System.out.println("-------------------------------------------------------");
         while (true) {
@@ -557,7 +559,7 @@ class BlockChainTaskToDo {
             System.out.println("Please enter your preferred command :");
             Scanner consoleCmd = new Scanner(System.in);
             String command = consoleCmd.nextLine();
-            System.out.println(command);
+            //System.out.println(command);
             switch (command) {
                 case "C":
                 case "c":
@@ -592,12 +594,11 @@ class BlockChainTaskToDo {
             int count = listRecords.size();
             // Iterating the list and printing it on console in a single line
             while (it.hasNext()) {
-                BlockRecord tempRec = it.next();
-                System.out.printf("%d. " + "%s %s %s %s %s %s %s %s \n", count,
-                        tempRec.getTimeStamp(), tempRec.getFirstName(),
-                        tempRec.getLastName(), tempRec.getDateOfBirth(),
-                        tempRec.getSsnNumber(), tempRec.getMedDiag(),
-                        tempRec.getMedTreat(), tempRec.getMedRX());
+                BlockRecord iteratorRec = it.next();
+                System.out.printf("%d. " + "%s " + "%s " + "%s " + "%s " + "%s " + "%s " + "%s " +  "%s \n", count,
+                        iteratorRec.getTimeStamp(), iteratorRec.getFirstName(), iteratorRec.getLastName(),
+                        iteratorRec.getDateOfBirth(), iteratorRec.getSsnNumber(), iteratorRec.getMedDiag(),
+                        iteratorRec.getMedTreat(), iteratorRec.getMedRX());
                 count--;
             }
         } catch (IOException ioException) {
@@ -1108,8 +1109,7 @@ class BlockChainTaskToDo {
                     // creating hash function of the block data by invoking MD2StringBuilder method
                     String hash256DigestStr = MD2StringBuilder(blockRecStr);
 
-                    // block record aids in creating message digest that will be used later to verify whether the block
-                    // is correctly signed by process or not.
+                    // declaring signed hash variable
                     String hashSigned = "";
 
                     // Signing the final unverified block using hash256DigestStr and private key
@@ -1150,11 +1150,11 @@ class BlockChainTaskToDo {
             // update() method is invoked to modify the digest using specified # of bytes
             msgDigest.update(blockRecStr.getBytes());
             // computing hash on the updated msgDigest object (output will be in byte[] format)
-            byte[] byteData = msgDigest.digest();
+            byte[] byteValue = msgDigest.digest();
             // Converting byte to hex format data
             hexString = new StringBuffer();
-            for (byte byteDatum : byteData) {
-                hexString.append(Integer.toString((byteDatum & 0xff) + 0x100, 16).substring(1));
+            for (byte bd : byteValue) {
+                hexString.append(Integer.toString((bd & 0xff) + 0x100, 16).substring(1));
             }
             hash256DigestStr = hexString.toString();
         } catch (NoSuchAlgorithmException exception) {
@@ -1489,7 +1489,7 @@ class UBlockchainServer implements Runnable {
         // declaring bcSocket variable
         Socket bcSocket;
         // Display message stating the launch of updated blockchain server along with its port number
-        System.out.println("Launching the Blockchain server input thread using " + Ports.portBCServer);
+        System.out.println("Launching the BlockChain Server input thread using: " + Ports.portBCServer);
         try {
             // creating server socket object that takes in port number for bc server and queue length
             ServerSocket servsock = new ServerSocket(Ports.portBCServer, queueLength);
@@ -1560,9 +1560,6 @@ class UpdatedBlockchainWorker extends Thread {
 
 // Work class of BlockChain. As input to its constructor, we are passing the priority queue of THIS process
 // that holds the UVB. The block is popped out from the queue and stored in a temporary variable for further processing.
-// This record is then converted to string and digital signature of the block is verified to confirm that it has been
-// signed by its process.
-
 class WorkPuzzle implements Runnable {
 
     // declaring local block Queue variable
