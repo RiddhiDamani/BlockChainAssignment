@@ -29,7 +29,7 @@ Execution Steps:
 
 6. Notes:
 Below process has been followed to create the blockchain:
-a. Process 2 sends a message (start signal) to other processes - 0 and 1. Sleep() statements are inserted to aid in proper
+a. P2 sends a message (start signal) to other processes - 0 and 1. Sleep() statements are inserted to aid in proper
    process coordination of all the 3 processes.
 b. Once, each of the 3 processes receives the start signal, it will continue processing the other methods in the flow:
     - multicast of public keys (reading keys of each processes)
@@ -41,11 +41,10 @@ b. Once, each of the 3 processes receives the start signal, it will continue pro
     - solving the work/puzzle - verification of the blocks
     - Adding to the blockchain ledger
 c. Each process keeps a copy of the blockchain ledger that they access to add only when they receive the verified block.
-d. Even if the block is not new i.e. it has been updated, it will always be added to the blockchain if it doesn't exist there.
+d. Even if the block is not new i.e. it has been updated, it will always be added to the blockchain if it doesn't exist in it.
 e. I have implemented this blockchain - by sending the verified block to all other processes and adding it to the blockchain.
 f. Few additional console commands have been implemented too:- C (Credit), V (Verify Entire Blockchain), L (list of records on
     single line). I was unable to implement the R (Reading file of records to create new data!).
-
 
 7. Web Sources Credits - THANKS!
 https://medium.com/programmers-blockchain/create-simple-blockchain-java-tutorial-from-scratch-6eeed3cb03fa
@@ -58,6 +57,8 @@ https://www.programcreek.com/java-api-examples/index.php?api=java.security.Secur
 https://www.mkyong.com/java/java-sha-hashing-example/
 https://stackoverflow.com/questions/19818550/java-retrieve-the-actual-value-of-the-public-key-from-the-keypair-object
 https://www.java67.com/2014/10/how-to-pad-numbers-with-leading-zeroes-in-Java-example.html
+
+- Credits - Thank you Dr. Elliott for the utility code provided. It was helpful.
 
 ----------------------------------------------------------*/
 // Importing the gson libraries to convert JSON to Java objects and vice-versa
@@ -90,9 +91,12 @@ import java.util.concurrent.PriorityBlockingQueue;
 public class Blockchain {
     // main() method for blockchain class
     public static void main(String[] args) {
-        // int queueLength = 6;
+        int queueLength = 6;
         // declaring processID variable
         int processID;
+        if (args.length < 1) {
+            processID = 0; // if no argument is passed, 0 is taken as default
+        }
         // Based on the argument passed in the console - process 0, 1 or 2
         // we trigger the 3 different processes from Blockchain.java
         switch (args[0]) {
@@ -413,7 +417,6 @@ class BlockChainTaskToDo {
     public static boolean pkFlag = false;
     // declaring and initializing public key counter variable
     public static int pkCount = 0;
-    //public static String blockchain = "[First block]";
     // used to store key pair for the processes
     public static KeyPair keysPair;
     // used to store our processes public keys - for 3 processes; it will store 3
@@ -456,8 +459,12 @@ class BlockChainTaskToDo {
 
     // run() method
     public void run() {
+
         // Display message for launching the BlockChain procedure
         System.out.println("Riddhi Damani's BlockChain in progress..\n");
+        System.out.println("Note: Extra Console Commands (C, V, L) have been implemented. It will be displayed on the screen " +
+                "after the initial verification of the blocks are completed.");
+        System.out.println("You will experience a sleep of ~21secs.\n");
         // Display message indicating process specific input file access
         System.out.println("Currently, utilizing input file: " + String.format("BlockInput%d.txt", processID));
         // new thread created for starting the main server - this will set the beginProcessFlag to TRUE
@@ -568,16 +575,15 @@ class BlockChainTaskToDo {
         }
     }
 
-    // Method invoked when user wish to list the verified blocks in the blockchain ledger
+    // Method invoked when user wish to list the verified blocks of the blockchain ledger in a single line
     // Invoked when user enters command 'L' or 'l' in the console.
     private void listBlockRecords() {
         Gson gson = new Gson();
         LinkedList<BlockRecord> listRecords;
-        // Reading the blockchain ledger file
         try {
+            // Reading the blockchain ledger file
             Reader inputFile = new FileReader("BlockchainLedger.json");
-            Type typeFormat = new TypeToken<LinkedList<BlockRecord>>() {
-            }.getType();
+            Type typeFormat = new TypeToken<LinkedList<BlockRecord>>() {}.getType();
             // creating list of records
             listRecords = gson.fromJson(inputFile, typeFormat);
             System.out.println("Below verified records are present in our BlockChain Ledger (latest first):");
@@ -661,11 +667,11 @@ class BlockChainTaskToDo {
                         try {
                             // Validating the signed - sha 256 signature by utilizing the public key of the process
                             // that verified it.
-                            boolean hashVerified = verifySignature(rec.getWinningHashValue().getBytes(),
+                            boolean isHashVerified = verifySignature(rec.getWinningHashValue().getBytes(),
                                     publicKeyList[Integer.parseInt(rec.getProcessIDVerification())],
                                     Base64.getDecoder().decode(rec.getWinningSignedHashValue()));
                             // Based on hash verification, display message accordingly
-                            if(hashVerified) {
+                            if(isHashVerified) {
                                 System.out.println("#BlockID: " + recNum + " Hash (SHA-256) signature verified successfully");
                             }
                             else {
@@ -675,12 +681,12 @@ class BlockChainTaskToDo {
 
                             // Validating the signed block ID by utilizing the public key of the process
                             // that created it.
-                            boolean blockIDVerified = verifySignature(rec.getBlock_ID().getBytes(),
+                            boolean isBlockIDVerified = verifySignature(rec.getBlock_ID().getBytes(),
                                     publicKeyList[Integer.parseInt(rec.getProcessCreation())],
                                     Base64.getDecoder().decode(rec.getSignedBlock_ID()));
 
                             // Based on Block ID signature verification, display message accordingly
-                            if(blockIDVerified) {
+                            if(isBlockIDVerified) {
                                 System.out.println("#BlockID: " + recNum + " Signature verified successfully");
                             }
                             else {
@@ -757,7 +763,6 @@ class BlockChainTaskToDo {
         Iterator<BlockRecord> iteratorVar = brList.iterator();
         try {
             while (iteratorVar.hasNext()) {
-
                 tempBlockRec = iteratorVar.next();
                 // creating JSON format of block record
                 String blockRec = jsonBuilder(tempBlockRec);
@@ -821,8 +826,8 @@ class BlockChainTaskToDo {
     }
 
     // Multicast of public keys method - receives the public key and multicast/broadcasts the key to other
-    // processes. There is an additional piece of data attached with the key i.e. process ID.
-    // Doing this will aid in deciding which public key can be used when verifying the block
+    // processes. Process ID is also attached with it which will help us in deciding which process's
+    // public key has been used when verifying the block
     public void multiCastPublicKeys() {
         // declaring mcpkSocket Socket variable
         Socket mcpkSocket;
@@ -856,7 +861,7 @@ class BlockChainTaskToDo {
         }
     }
 
-    // Method used by process 2 to send a "start" signal to all other processes.
+    // Method to send a "start" signal to all other processes - invoked by P2
     // Once the signal is received, they flip the flag beginProcessFlag and thus, continue the rest
     // of the operation/task
     public boolean startAllProcesses() {
@@ -952,7 +957,7 @@ class BlockChainTaskToDo {
         // allowing dummy block record to be written on the blockchain ledger
         if (processID == 0) {
             // displaying message on the terminal on the action being performed
-            System.out.println("Writing first block to BC ledger");
+            System.out.println("Writing first block to BC ledger - Dummy Entry");
             // sending block to the ledger
             sendBlock2Ledger(blockRec, "bcLedgerUpdate");
             // writing JSON on the disk
@@ -1033,7 +1038,6 @@ class BlockChainTaskToDo {
     // Method that reads in the 3 input files - BlockInput0.txt, BlockInput1.txt, BlockInput2.txt
     // Then, creates the token for each data value and utilizes it to create un-verified block.
     // This block will have a SHA256 hash string value that will aid in creating digital signature later for auditing
-    // This will ensure that our block is digitally signed.
     public static void readInputFile() {
         // formatting of the input file based on respective process ID
         // Making it dynamic - inorder to input any number of peers BlockInput files
@@ -1200,7 +1204,6 @@ class BlockChainTaskToDo {
             ioException.printStackTrace();
         }
     }
-
 }
 
 // Ports class that defines and sets ports for all the processes
@@ -1597,7 +1600,7 @@ class WorkPuzzle implements Runnable {
                 boolean isBlockIDVerified;
                 // Checking whether the current block is already present in ledger or not!
                 if (BlockChainTaskToDo.isDuplicate(blockRec) && blockRec != null) {
-                    System.out.println("Duplicated Block Record in BlockChain");
+                    //System.out.println("Duplicated Block Record in BlockChain");
                     continue;
                 }
 
@@ -1637,8 +1640,6 @@ class WorkPuzzle implements Runnable {
                             randomStr = randomAlphaNumeric(8);
                             // Adding third part of the DATA : random seed string to the our updated BlockData
                             concatenateStr = updatedBlock + randomStr;
-                            System.out.println("Final BlockData consisting of 3 parts: Previous Hash, Actual Data, and" +
-                                    "Random Seed String (before hashing): " + concatenateStr);
 
                             // Getting hash value of our BlockData
                             MessageDigest msgDigest = MessageDigest.getInstance("SHA-256");
@@ -1710,7 +1711,7 @@ class WorkPuzzle implements Runnable {
                             if (BlockChainTaskToDo.isDuplicate(blockRec)) {
                                 // Periodically checking if current record has already been verified or not.
                                 // If it is, then abandoning this process's attempt to verify the block
-                                System.out.println("Duplicate Block - Already verified!!");
+                                //System.out.println("Duplicate Block - Already verified!!");
                                 break;
                             }
                             // Invoking sleep method
